@@ -9,6 +9,17 @@ using TrelloAutomation.Api.Swagger;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!builder.Environment.IsDevelopment() || !string.IsNullOrWhiteSpace(port))
+{
+    if (string.IsNullOrWhiteSpace(port))
+    {
+        port = "8080";
+    }
+
+    builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+}
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -27,11 +38,8 @@ builder.Services.AddHttpClient<ITrelloClient, TrelloClient>((serviceProvider, cl
 
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseMiddleware<ApiKeyMiddleware>();
 

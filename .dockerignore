@@ -1,0 +1,14 @@
+.git/
+.vs/
+.vscode/
+**/bin/
+**/obj/
+TestResults/
+coverage/
+artifacts/
+logs/
+*.log
+.env
+.env.*
+appsettings.Local.json
+secrets.json

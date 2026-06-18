@@ -116,6 +116,49 @@ curl -X POST http://localhost:5000/api/trello/sync-plan \
 
 Consigue tu API Key desde el portal de Trello para desarrolladores y genera un Token autorizado para tu cuenta. El `Trello:BoardId` puede ser el ID largo del tablero o su `shortLink`.
 
+## Despliegue en Render
+
+Render puede ejecutar esta API como Web Service usando el `Dockerfile` ubicado en la raiz del repositorio.
+
+Configuracion sugerida:
+
+- Service type: `Web Service`.
+- Runtime: `Docker`.
+- Root directory: dejar vacio si Render apunta a la raiz del repo.
+- Dockerfile path: `Dockerfile`.
+- Health check path: `/health`.
+
+Variables de entorno requeridas en Render:
+
+```text
+Trello__ApiKey=TU_TRELLO_API_KEY
+Trello__Token=TU_TRELLO_TOKEN
+Trello__BoardId=TU_TRELLO_BOARD_ID
+Trello__BaseUrl=https://api.trello.com/1
+Integration__ApiKey=TU_INTEGRATION_API_KEY
+ASPNETCORE_ENVIRONMENT=Production
+```
+
+No agregues estas variables al repositorio. Configuralas en el panel de Render, dentro de `Environment`.
+
+La aplicacion lee la variable `PORT` que entrega Render y escucha en `http://0.0.0.0:{PORT}`. Si `PORT` no existe, usa `8080` como fallback. Swagger queda habilitado temporalmente para probar el despliegue:
+
+```text
+https://TU-SERVICIO.onrender.com/swagger
+```
+
+Prueba rapida despues del deploy:
+
+```bash
+curl https://TU-SERVICIO.onrender.com/health
+```
+
+Para probar los endpoints protegidos, envia el header:
+
+```text
+X-Integration-Key: TU_INTEGRATION_API_KEY
+```
+
 ## Siguiente paso: GPT Actions
 
 Publica la API en HTTPS, importa el OpenAPI de Swagger en tu GPT personalizado y configura el header `X-Integration-Key` como autenticación de la Action. Revisa `openapi-notes.md` para detalles de producción.
