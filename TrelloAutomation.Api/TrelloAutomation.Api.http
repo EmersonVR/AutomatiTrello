@@ -1,0 +1,19 @@
+@TrelloAutomation.Api_HostAddress = http://localhost:5000
+@IntegrationApiKey = TU_INTEGRATION_API_KEY
+
+GET {{TrelloAutomation.Api_HostAddress}}/health
+Accept: application/json
+
+###
+
+POST {{TrelloAutomation.Api_HostAddress}}/api/trello/preview-plan
+Content-Type: application/json
+X-Integration-Key: {{IntegrationApiKey}}
+
+< ./sample-plan.json
+
+###
+
+GET {{TrelloAutomation.Api_HostAddress}}/api/trello/board-context
+Accept: application/json
+X-Integration-Key: {{IntegrationApiKey}}

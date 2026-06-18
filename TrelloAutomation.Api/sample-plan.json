@@ -1,0 +1,94 @@
+{
+  "boardId": null,
+  "mode": "append",
+  "dryRun": false,
+  "lists": [
+    {
+      "name": "Semana 1 - Backend Base",
+      "position": "bottom",
+      "cards": [
+        {
+          "title": "Crear solución .NET 8 por capas",
+          "description": "Crear la estructura inicial del backend del SaaS de agendamiento.",
+          "priority": "Alta",
+          "estimate": "2 horas",
+          "labels": ["Backend", "Alta"],
+          "dueDate": null,
+          "checklist": [
+            "Crear proyecto API",
+            "Configurar Swagger",
+            "Configurar User Secrets"
+          ],
+          "acceptanceCriteria": [
+            "La solución compila correctamente",
+            "Swagger abre en ambiente local",
+            "No hay secretos en appsettings.json"
+          ],
+          "codexNotes": "Mantener Minimal APIs y responsabilidades separadas."
+        },
+        {
+          "title": "Implementar cliente Trello",
+          "description": "Crear integración con Trello REST API usando HttpClientFactory.",
+          "priority": "Alta",
+          "estimate": "3 horas",
+          "labels": ["Backend", "DevOps"],
+          "dueDate": null,
+          "checklist": [
+            "Listar listas del tablero",
+            "Crear listas",
+            "Crear tarjetas",
+            "Crear etiquetas"
+          ],
+          "acceptanceCriteria": [
+            "Todas las llamadas usan configuración segura",
+            "Los errores de Trello se manejan de forma controlada"
+          ],
+          "codexNotes": "No registrar tokens ni API keys."
+        }
+      ]
+    },
+    {
+      "name": "Semana 2 - Producto y Pruebas",
+      "position": "bottom",
+      "cards": [
+        {
+          "title": "Definir flujo de agenda",
+          "description": "Documentar el flujo de reservas para salones de belleza.",
+          "priority": "Media",
+          "estimate": "2 horas",
+          "labels": ["Producto", "Documentación"],
+          "dueDate": null,
+          "checklist": [
+            "Definir estados de cita",
+            "Definir datos mínimos del cliente",
+            "Definir reglas de cancelación"
+          ],
+          "acceptanceCriteria": [
+            "El flujo cubre creación, confirmación y cancelación",
+            "El documento puede alimentar futuras historias de usuario"
+          ],
+          "codexNotes": "Usar nombres de dominio claros para futuras entidades."
+        },
+        {
+          "title": "Preparar pruebas manuales de sync",
+          "description": "Crear casos para probar preview-plan y sync-plan desde Swagger.",
+          "priority": "Baja",
+          "estimate": "1 hora",
+          "labels": ["Pruebas", "Backend"],
+          "dueDate": null,
+          "checklist": [
+            "Probar request válido",
+            "Probar prioridad inválida",
+            "Probar límite de 50 tarjetas",
+            "Probar header inválido"
+          ],
+          "acceptanceCriteria": [
+            "Los errores 400 tienen mensajes claros",
+            "Los errores 401 no devuelven secretos"
+          ],
+          "codexNotes": "Mantener los ejemplos simples para conectarlos luego con GPT Actions."
+        }
+      ]
+    }
+  ]
+}
