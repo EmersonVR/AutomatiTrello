@@ -83,6 +83,58 @@ http://localhost:5000/swagger
 - `GET /api/trello/board-context`: requiere `X-Integration-Key`, consulta listas y etiquetas del tablero configurado.
 - `POST /api/trello/sync-plan`: requiere `X-Integration-Key`, crea o reutiliza listas, etiquetas, tarjetas y checklists.
 
+## Fase 2: actualizaciones seguras
+
+La V1 esta orientada a crear o reutilizar elementos:
+
+- `preview-plan`: valida el JSON localmente y no llama a Trello; sirve para revisar forma y conteos aproximados antes de crear.
+- `sync-plan`: crea o reutiliza listas, etiquetas, tarjetas y checklists por nombre; sirve para cargar planes nuevos.
+
+La Fase 2 esta orientada a actualizar elementos existentes por ID:
+
+- `GET /api/trello/board-context-full`: consulta listas, tarjetas, etiquetas y checklists existentes con IDs reales.
+- `PATCH /api/trello/lists/{listId}/rename`: renombra una lista existente por ID.
+- `PATCH /api/trello/cards/{cardId}`: actualiza titulo, descripcion, fecha y etiquetas de una tarjeta existente.
+- `POST /api/trello/replace-text`: reemplaza texto solo en `cardIds` o `listIds` especificos; nunca actualiza todo el board por defecto.
+- `POST /api/trello/update-plan-preview`: lee Trello y devuelve que cambiaria sin modificar nada.
+- `POST /api/trello/update-plan`: aplica cambios por `listId` y `cardId`.
+
+Recomendacion de seguridad: nunca ejecutes updates masivos sin antes usar `dryRun=true` o `update-plan-preview`.
+
+Ejemplo para reemplazar `BeautyAppointments` por `Appointments` en tarjetas seleccionadas:
+
+```json
+{
+  "boardId": null,
+  "replacements": [
+    { "from": "BeautyAppointments.Api", "to": "Appointments.Api" },
+    { "from": "BeautyAppointments.Application", "to": "Appointments.Application" },
+    { "from": "BeautyAppointments.Domain", "to": "Appointments.Domain" },
+    { "from": "BeautyAppointments.Infrastructure", "to": "Appointments.Infrastructure" },
+    { "from": "BeautyAppointments.Shared", "to": "Appointments.Shared" },
+    { "from": "BeautyAppointments.sln", "to": "Appointments.sln" },
+    { "from": "BeautyAppointments", "to": "Appointments" },
+    { "from": "frontend tecnico", "to": "appointments-web" }
+  ],
+  "target": {
+    "listIds": ["ID_LISTA_EXISTENTE"],
+    "cardIds": [],
+    "includeCardTitles": true,
+    "includeCardDescriptions": true,
+    "includeChecklistItems": false
+  },
+  "dryRun": true
+}
+```
+
+Para renombrar listas, usa `PATCH /api/trello/lists/{listId}/rename` con el ID obtenido desde `board-context-full`:
+
+```json
+{
+  "name": "Appointments MVP V1"
+}
+```
+
 ## Probar con Swagger
 
 1. Ejecuta la API.

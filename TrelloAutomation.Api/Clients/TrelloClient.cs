@@ -30,6 +30,13 @@ public sealed class TrelloClient : ITrelloClient
             ["fields"] = "name,pos"
         }, cancellationToken);
 
+    public Task<IReadOnlyList<TrelloListDto>> GetBoardListsFullAsync(string boardId, CancellationToken cancellationToken) =>
+        SendAsync<IReadOnlyList<TrelloListDto>>(HttpMethod.Get, $"boards/{Uri.EscapeDataString(boardId)}/lists", new Dictionary<string, string?>
+        {
+            ["filter"] = "all",
+            ["fields"] = "name,pos,closed"
+        }, cancellationToken);
+
     public Task<IReadOnlyList<TrelloLabelDto>> GetBoardLabelsAsync(string boardId, CancellationToken cancellationToken) =>
         SendAsync<IReadOnlyList<TrelloLabelDto>>(HttpMethod.Get, $"boards/{Uri.EscapeDataString(boardId)}/labels", new Dictionary<string, string?>
         {
@@ -45,10 +52,28 @@ public sealed class TrelloClient : ITrelloClient
             ["pos"] = position
         }, cancellationToken);
 
+    public Task<TrelloListDto> GetListAsync(string listId, CancellationToken cancellationToken) =>
+        SendAsync<TrelloListDto>(HttpMethod.Get, $"lists/{Uri.EscapeDataString(listId)}", new Dictionary<string, string?>
+        {
+            ["fields"] = "name,pos,closed"
+        }, cancellationToken);
+
+    public Task<TrelloListDto> RenameListAsync(string listId, string name, CancellationToken cancellationToken) =>
+        SendAsync<TrelloListDto>(HttpMethod.Put, $"lists/{Uri.EscapeDataString(listId)}", new Dictionary<string, string?>
+        {
+            ["name"] = name
+        }, cancellationToken);
+
     public Task<IReadOnlyList<TrelloCardDto>> GetCardsInListAsync(string listId, CancellationToken cancellationToken) =>
         SendAsync<IReadOnlyList<TrelloCardDto>>(HttpMethod.Get, $"lists/{Uri.EscapeDataString(listId)}/cards", new Dictionary<string, string?>
         {
-            ["fields"] = "name,desc,idLabels,due"
+            ["fields"] = "name,desc,idList,idLabels,labels,due"
+        }, cancellationToken);
+
+    public Task<TrelloCardDto> GetCardAsync(string cardId, CancellationToken cancellationToken) =>
+        SendAsync<TrelloCardDto>(HttpMethod.Get, $"cards/{Uri.EscapeDataString(cardId)}", new Dictionary<string, string?>
+        {
+            ["fields"] = "name,desc,idList,idLabels,labels,due"
         }, cancellationToken);
 
     public Task<TrelloCardDto> CreateCardAsync(
@@ -66,6 +91,32 @@ public sealed class TrelloClient : ITrelloClient
             ["idLabels"] = labelIds.Count == 0 ? null : string.Join(",", labelIds),
             ["due"] = dueDate?.UtcDateTime.ToString("O")
         }, cancellationToken);
+
+    public Task<TrelloCardDto> UpdateCardAsync(
+        string cardId,
+        string? title,
+        string? description,
+        DateTimeOffset? dueDate,
+        CancellationToken cancellationToken)
+    {
+        var query = new Dictionary<string, string?>();
+        if (title is not null)
+        {
+            query["name"] = title;
+        }
+
+        if (description is not null)
+        {
+            query["desc"] = description;
+        }
+
+        if (dueDate.HasValue)
+        {
+            query["due"] = dueDate.Value.UtcDateTime.ToString("O");
+        }
+
+        return SendAsync<TrelloCardDto>(HttpMethod.Put, $"cards/{Uri.EscapeDataString(cardId)}", query, cancellationToken);
+    }
 
     public Task UpdateCardDescriptionAsync(string cardId, string description, CancellationToken cancellationToken) =>
         SendWithoutBodyAsync(HttpMethod.Put, $"cards/{Uri.EscapeDataString(cardId)}", new Dictionary<string, string?>

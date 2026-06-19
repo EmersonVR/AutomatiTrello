@@ -5,6 +5,7 @@ public sealed class TrelloListDto
     public string Id { get; init; } = string.Empty;
     public string Name { get; init; } = string.Empty;
     public decimal? Pos { get; init; }
+    public bool Closed { get; init; }
 }
 
 public sealed class TrelloLabelDto
@@ -18,9 +19,12 @@ public sealed class TrelloCardDto
 {
     public string Id { get; init; } = string.Empty;
     public string Name { get; init; } = string.Empty;
+    public string Title => Name;
     public string? Desc { get; init; }
+    public string IdList { get; init; } = string.Empty;
     public DateTimeOffset? Due { get; init; }
     public IReadOnlyList<string> IdLabels { get; init; } = [];
+    public IReadOnlyList<TrelloLabelDto> Labels { get; init; } = [];
 }
 
 public sealed class TrelloChecklistDto
