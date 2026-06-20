@@ -53,10 +53,11 @@ app.MapGet("/health", () => Results.Ok(new
 
 var trello = app.MapGroup("/api/trello").WithTags("Trello");
 
-trello.MapPost("/preview-plan", Results<Ok<SyncResultDto>, BadRequest<ValidationProblemDto>> (
+trello.MapPost("/preview-plan", async Task<Results<Ok<SyncResultDto>, BadRequest<ValidationProblemDto>, ProblemHttpResult>> (
     ProjectPlanRequest request,
     IPlanValidator validator,
-    IOptions<TrelloOptions> options) =>
+    ITrelloService trelloService,
+    CancellationToken cancellationToken) =>
 {
     var validation = validator.Validate(request);
     if (!validation.IsValid)
@@ -64,27 +65,14 @@ trello.MapPost("/preview-plan", Results<Ok<SyncResultDto>, BadRequest<Validation
         return TypedResults.BadRequest(validation.ToProblem());
     }
 
-    var totalCards = request.Lists.Sum(list => list.Cards.Count);
-    var totalCheckItems = request.Lists.SelectMany(list => list.Cards).Sum(card => card.Checklist.Count);
-    var totalLabels = request.Lists
-        .SelectMany(list => list.Cards)
-        .SelectMany(card => card.Labels.Append(card.Priority))
-        .Where(label => !string.IsNullOrWhiteSpace(label))
-        .Distinct(StringComparer.OrdinalIgnoreCase)
-        .Count();
-
-    return TypedResults.Ok(new SyncResultDto
+    try
     {
-        Success = true,
-        BoardId = ResolveBoardId(request.BoardId, options.Value.BoardId),
-        CreatedLists = request.Lists.Count,
-        CreatedCards = totalCards,
-        CreatedLabels = totalLabels,
-        CreatedChecklists = totalCards,
-        CreatedCheckItems = totalCheckItems,
-        Warnings = ["Preview only; no Trello calls were made."],
-        Errors = []
-    });
+        return TypedResults.Ok(await trelloService.PreviewPlanAsync(request, cancellationToken));
+    }
+    catch (Exception ex)
+    {
+        return TypedResults.Problem(ex.Message, statusCode: StatusCodes.Status502BadGateway);
+    }
 })
 .WithName("PreviewPlan")
 .WithOpenApi();
@@ -263,11 +251,6 @@ trello.MapPost("/sync-plan", async Task<Results<Ok<SyncResultDto>, BadRequest<Va
 .WithOpenApi();
 
 app.Run();
-
-static string ResolveBoardId(string? requestBoardId, string configuredBoardId)
-{
-    return string.IsNullOrWhiteSpace(requestBoardId) ? configuredBoardId : requestBoardId.Trim();
-}
 
 static ValidationProblemDto ToProblem(IReadOnlyList<string> errors) => new()
 {

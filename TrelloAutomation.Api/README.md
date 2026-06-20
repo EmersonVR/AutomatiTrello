@@ -79,7 +79,7 @@ http://localhost:5000/swagger
 ## Endpoints
 
 - `GET /health`: público.
-- `POST /api/trello/preview-plan`: requiere `X-Integration-Key`, valida el plan y no llama a Trello.
+- `POST /api/trello/preview-plan`: requiere `X-Integration-Key`, valida el plan y consulta Trello para calcular reutilizacion real de listas, tarjetas y etiquetas sin aplicar cambios.
 - `GET /api/trello/board-context`: requiere `X-Integration-Key`, consulta listas y etiquetas del tablero configurado.
 - `POST /api/trello/sync-plan`: requiere `X-Integration-Key`, crea o reutiliza listas, etiquetas, tarjetas y checklists.
 
@@ -87,8 +87,9 @@ http://localhost:5000/swagger
 
 La V1 esta orientada a crear o reutilizar elementos:
 
-- `preview-plan`: valida el JSON localmente y no llama a Trello; sirve para revisar forma y conteos aproximados antes de crear.
-- `sync-plan`: crea o reutiliza listas, etiquetas, tarjetas y checklists por nombre; sirve para cargar planes nuevos.
+- `preview-plan`: valida el JSON y consulta el tablero para revisar conteos reales antes de crear.
+- `sync-plan`: crea o reutiliza listas, etiquetas, tarjetas y checklists por nombre o ID de etiqueta; sirve para cargar planes nuevos.
+- `allowCreateLabels=false`: bloquea `preview-plan` y `sync-plan` si el plan incluye una etiqueta que no existe en el tablero.
 
 La Fase 2 esta orientada a actualizar elementos existentes por ID:
 
@@ -141,7 +142,7 @@ Para renombrar listas, usa `PATCH /api/trello/lists/{listId}/rename` con el ID o
 2. Abre Swagger.
 3. En los endpoints `/api/trello/*`, agrega el header `X-Integration-Key` con tu clave interna.
 4. Usa el contenido de `sample-plan.json` como body.
-5. Ejecuta primero `preview-plan`.
+5. Ejecuta primero `preview-plan` con `allowCreateLabels=false` para confirmar que no se crearan etiquetas por accidente.
 6. Cuando el resumen sea correcto, ejecuta `sync-plan`.
 
 ## Probar con curl

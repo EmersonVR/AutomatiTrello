@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Microsoft.Extensions.Options;
 using TrelloAutomation.Api.Clients;
 using TrelloAutomation.Api.Dtos;
@@ -228,14 +230,107 @@ public sealed class TrelloService : ITrelloService
     public Task<UpdatePlanResultDto> ApplyUpdatePlanAsync(UpdatePlanRequest request, CancellationToken cancellationToken) =>
         ProcessUpdatePlanAsync(request, applyChanges: true, cancellationToken);
 
-    public async Task<SyncResultDto> SyncPlanAsync(ProjectPlanRequest request, CancellationToken cancellationToken)
+    public async Task<SyncResultDto> PreviewPlanAsync(ProjectPlanRequest request, CancellationToken cancellationToken)
     {
         var boardId = string.IsNullOrWhiteSpace(request.BoardId) ? GetConfiguredBoardId() : request.BoardId.Trim();
-        var warnings = new List<string>();
+        var warnings = new List<string> { "Preview only; no changes were applied to Trello." };
+        var errors = new List<string>();
         var result = new SyncResultDto { Success = true, BoardId = boardId };
 
         var boardLists = (await _trelloClient.GetBoardListsAsync(boardId, cancellationToken)).ToList();
         var boardLabels = (await _trelloClient.GetBoardLabelsAsync(boardId, cancellationToken)).ToList();
+        var labelResolution = ResolveRequestedLabels(request, boardLabels, errors);
+        ApplyLabelPreview(result, labelResolution);
+
+        if (errors.Count > 0)
+        {
+            result.Success = false;
+            result.Warnings = warnings;
+            result.Errors = errors;
+            return result;
+        }
+
+        foreach (var planList in request.Lists)
+        {
+            var trelloList = boardLists.FirstOrDefault(list => SameName(list.Name, planList.Name));
+            if (trelloList is null)
+            {
+                result.CreatedLists++;
+                result.CreatedCards += planList.Cards.Count;
+                result.CreatedChecklists += planList.Cards.Count(card => card.Checklist.Count > 0);
+                result.CreatedCheckItems += planList.Cards.Sum(card => CleanItems(card.Checklist).Count);
+                continue;
+            }
+
+            result.ReusedLists++;
+            var existingCards = (await _trelloClient.GetCardsInListAsync(trelloList.Id, cancellationToken)).ToList();
+
+            foreach (var planCard in planList.Cards)
+            {
+                var existingCard = existingCards.FirstOrDefault(card => SameName(card.Name, planCard.Title));
+                if (existingCard is null)
+                {
+                    result.CreatedCards++;
+                    if (CleanItems(planCard.Checklist).Count > 0)
+                    {
+                        result.CreatedChecklists++;
+                        result.CreatedCheckItems += CleanItems(planCard.Checklist).Count;
+                    }
+                }
+                else
+                {
+                    result.UpdatedCards++;
+                }
+            }
+        }
+
+        result.Success = errors.Count == 0;
+        result.Warnings = warnings;
+        result.Errors = errors;
+        return result;
+    }
+
+    public async Task<SyncResultDto> SyncPlanAsync(ProjectPlanRequest request, CancellationToken cancellationToken)
+    {
+        var boardId = string.IsNullOrWhiteSpace(request.BoardId) ? GetConfiguredBoardId() : request.BoardId.Trim();
+        var warnings = new List<string>();
+        var errors = new List<string>();
+        var result = new SyncResultDto { Success = true, BoardId = boardId };
+
+        var boardLists = (await _trelloClient.GetBoardListsAsync(boardId, cancellationToken)).ToList();
+        var boardLabels = (await _trelloClient.GetBoardLabelsAsync(boardId, cancellationToken)).ToList();
+        var labelResolution = ResolveRequestedLabels(request, boardLabels, errors);
+        ApplyLabelPreview(result, labelResolution);
+
+        if (errors.Count > 0)
+        {
+            result.Success = false;
+            result.Warnings = warnings;
+            result.Errors = errors;
+            return result;
+        }
+
+        foreach (var labelName in labelResolution.LabelNamesToCreate)
+        {
+            var color = LabelColors.GetValueOrDefault(labelName, "blue");
+            try
+            {
+                var createdLabel = await _trelloClient.CreateLabelAsync(boardId, labelName, color, cancellationToken);
+                boardLabels.Add(createdLabel);
+            }
+            catch (TrelloApiException ex)
+            {
+                errors.Add($"Label '{labelName}' could not be created with color '{color}'. Trello response: {ex.Message}");
+            }
+        }
+
+        if (errors.Count > 0)
+        {
+            result.Success = false;
+            result.Warnings = warnings;
+            result.Errors = errors;
+            return result;
+        }
 
         foreach (var planList in request.Lists)
         {
@@ -255,7 +350,7 @@ public sealed class TrelloService : ITrelloService
 
             foreach (var planCard in planList.Cards)
             {
-                var labelIds = await ResolveLabelsAsync(boardId, planCard, boardLabels, result, warnings, cancellationToken);
+                var labelIds = ResolveCardLabelIds(planCard, boardLabels);
                 var description = TrelloDescriptionBuilder.Build(planCard);
                 var existingCard = existingCards.FirstOrDefault(card => SameName(card.Name, planCard.Title));
                 TrelloCardDto trelloCard;
@@ -296,47 +391,66 @@ public sealed class TrelloService : ITrelloService
             result.UpdatedCards);
 
         result.Warnings = warnings;
-        result.Success = true;
+        result.Errors = errors;
+        result.Success = errors.Count == 0;
         return result;
     }
 
-    private async Task<IReadOnlyList<string>> ResolveLabelsAsync(
-        string boardId,
-        PlanCardDto planCard,
-        List<TrelloLabelDto> boardLabels,
-        SyncResultDto result,
-        List<string> warnings,
-        CancellationToken cancellationToken)
+    private LabelResolution ResolveRequestedLabels(
+        ProjectPlanRequest request,
+        IReadOnlyList<TrelloLabelDto> boardLabels,
+        List<string> errors)
     {
-        var labelNames = planCard.Labels
-            .Append(planCard.Priority)
-            .Where(label => !string.IsNullOrWhiteSpace(label))
-            .Select(label => label!.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var resolution = new LabelResolution();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        var labelIds = new List<string>();
-        foreach (var labelName in labelNames)
+        foreach (var labelName in GetRequestedLabelNames(request))
         {
-            var existingLabel = boardLabels.FirstOrDefault(label => SameName(label.Name, labelName));
+            var existingLabel = FindLabel(boardLabels, labelName);
             if (existingLabel is not null)
             {
-                labelIds.Add(existingLabel.Id);
-                result.ReusedLabels++;
+                if (seen.Add($"id:{existingLabel.Id}"))
+                {
+                    resolution.LabelsToReuse.Add(existingLabel);
+                }
+
                 continue;
             }
 
-            var color = LabelColors.GetValueOrDefault(labelName, "blue");
-            try
+            var normalizedName = NormalizeName(labelName);
+            if (seen.Add($"name:{normalizedName}"))
             {
-                var createdLabel = await _trelloClient.CreateLabelAsync(boardId, labelName, color, cancellationToken);
-                boardLabels.Add(createdLabel);
-                labelIds.Add(createdLabel.Id);
-                result.CreatedLabels++;
+                if (request.AllowCreateLabels)
+                {
+                    resolution.LabelNamesToCreate.Add(labelName);
+                }
+                else
+                {
+                    errors.Add($"Label '{labelName}' does not exist on the board and allowCreateLabels is false.");
+                }
             }
-            catch (TrelloApiException ex)
+        }
+
+        return resolution;
+    }
+
+    private static void ApplyLabelPreview(SyncResultDto result, LabelResolution resolution)
+    {
+        result.CreatedLabels = resolution.LabelNamesToCreate.Count;
+        result.ReusedLabels = resolution.LabelsToReuse.Count;
+        result.LabelsToCreate = resolution.LabelNamesToCreate;
+        result.LabelsToReuse = resolution.LabelsToReuse;
+    }
+
+    private static IReadOnlyList<string> ResolveCardLabelIds(PlanCardDto planCard, IReadOnlyList<TrelloLabelDto> boardLabels)
+    {
+        var labelIds = new List<string>();
+        foreach (var labelName in GetCardLabelNames(planCard))
+        {
+            var label = FindLabel(boardLabels, labelName);
+            if (label is not null && !labelIds.Contains(label.Id, StringComparer.OrdinalIgnoreCase))
             {
-                warnings.Add($"Label '{labelName}' could not be created with color '{color}'. Trello response: {ex.Message}");
+                labelIds.Add(label.Id);
             }
         }
 
@@ -349,11 +463,7 @@ public sealed class TrelloService : ITrelloService
         SyncResultDto result,
         CancellationToken cancellationToken)
     {
-        var cleanItems = items
-            .Where(item => !string.IsNullOrWhiteSpace(item))
-            .Select(item => item.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var cleanItems = CleanItems(items);
 
         if (cleanItems.Count == 0)
         {
@@ -544,9 +654,9 @@ public sealed class TrelloService : ITrelloService
         foreach (var labelName in labelNames
             .Where(label => !string.IsNullOrWhiteSpace(label))
             .Select(label => label.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase))
+            .Distinct(NormalizedStringComparer.Instance))
         {
-            var existingLabel = boardLabels.FirstOrDefault(label => SameName(label.Name, labelName));
+            var existingLabel = FindLabel(boardLabels, labelName);
             if (existingLabel is not null)
             {
                 labelIds.Add(existingLabel.Id);
@@ -595,9 +705,76 @@ public sealed class TrelloService : ITrelloService
         return _options.BoardId.Trim();
     }
 
+    private static IReadOnlyList<string> GetRequestedLabelNames(ProjectPlanRequest request) =>
+        request.Lists
+            .SelectMany(list => list.Cards)
+            .SelectMany(GetCardLabelNames)
+            .ToList();
+
+    private static IReadOnlyList<string> GetCardLabelNames(PlanCardDto planCard) =>
+        planCard.Labels
+            .Append(planCard.Priority)
+            .Where(label => !string.IsNullOrWhiteSpace(label))
+            .Select(label => label!.Trim())
+            .Distinct(NormalizedStringComparer.Instance)
+            .ToList();
+
+    private static List<string> CleanItems(IReadOnlyList<string> items) =>
+        items
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Select(item => item.Trim())
+            .Distinct(NormalizedStringComparer.Instance)
+            .ToList();
+
+    private static TrelloLabelDto? FindLabel(IReadOnlyList<TrelloLabelDto> boardLabels, string labelNameOrId)
+    {
+        var cleanValue = labelNameOrId.Trim();
+        return boardLabels.FirstOrDefault(label => string.Equals(label.Id, cleanValue, StringComparison.OrdinalIgnoreCase))
+            ?? boardLabels.FirstOrDefault(label => SameName(label.Name, cleanValue));
+    }
+
     private static bool SameName(string left, string right) =>
-        string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase);
+        string.Equals(NormalizeName(left), NormalizeName(right), StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeName(string value)
+    {
+        var normalized = value.Trim().Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder(normalized.Length);
+
+        foreach (var character in normalized)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark)
+            {
+                builder.Append(char.ToLowerInvariant(character));
+            }
+        }
+
+        return builder.ToString().Normalize(NormalizationForm.FormC);
+    }
 
     private static string NormalizePosition(string? position) =>
         string.IsNullOrWhiteSpace(position) ? "bottom" : position.Trim().ToLowerInvariant();
+
+    private sealed class LabelResolution
+    {
+        public List<string> LabelNamesToCreate { get; } = [];
+        public List<TrelloLabelDto> LabelsToReuse { get; } = [];
+    }
+
+    private sealed class NormalizedStringComparer : IEqualityComparer<string>
+    {
+        public static NormalizedStringComparer Instance { get; } = new();
+
+        public bool Equals(string? x, string? y)
+        {
+            if (x is null || y is null)
+            {
+                return x is null && y is null;
+            }
+
+            return string.Equals(NormalizeName(x), NormalizeName(y), StringComparison.OrdinalIgnoreCase);
+        }
+
+        public int GetHashCode(string obj) => StringComparer.OrdinalIgnoreCase.GetHashCode(NormalizeName(obj));
+    }
 }

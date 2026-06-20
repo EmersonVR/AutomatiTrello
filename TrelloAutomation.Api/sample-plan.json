@@ -2,6 +2,7 @@
   "boardId": null,
   "mode": "append",
   "dryRun": false,
+  "allowCreateLabels": false,
   "lists": [
     {
       "name": "Semana 1 - Backend Base",

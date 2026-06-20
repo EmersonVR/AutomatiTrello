@@ -13,6 +13,8 @@ public sealed class SyncResultDto
     public int CreatedChecklists { get; set; }
     public int ReusedChecklists { get; set; }
     public int CreatedCheckItems { get; set; }
+    public IReadOnlyList<string> LabelsToCreate { get; set; } = [];
+    public IReadOnlyList<TrelloLabelDto> LabelsToReuse { get; set; } = [];
     public IReadOnlyList<string> Warnings { get; set; } = [];
     public IReadOnlyList<string> Errors { get; set; } = [];
 }

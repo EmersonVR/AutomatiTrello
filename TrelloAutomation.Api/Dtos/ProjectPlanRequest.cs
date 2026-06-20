@@ -5,5 +5,6 @@ public sealed class ProjectPlanRequest
     public string? BoardId { get; init; }
     public string Mode { get; init; } = "append";
     public bool DryRun { get; init; }
+    public bool AllowCreateLabels { get; init; } = true;
     public IReadOnlyList<PlanListDto> Lists { get; init; } = [];
 }
